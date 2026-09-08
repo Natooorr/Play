@@ -1,48 +1,62 @@
+from threading import Lock
+
 from app.models import Task
 
 tasks = []
+_next_id = 1
+_lock = Lock()
+
+
+def reset_store():
+    """Reset in-memory state for tests and local development."""
+    global _next_id
+    with _lock:
+        tasks.clear()
+        _next_id = 1
 
 
 def get_all_tasks():
-    return tasks
+    with _lock:
+        return list(tasks)
 
 
 def get_task(task_id):
-    for t in tasks:
-        if t.id == task_id:
-            return t
+    with _lock:
+        for task in tasks:
+            if task.id == task_id:
+                return task
     raise ValueError("not found")
 
 
 def create_task(data):
-    new_id = len(tasks) + 1
-    task = Task(
-        id=new_id,
-        title=data.get("title"),
-        description=data.get("description", ""),
-        status=data.get("status", "pending"),
-        priority=data.get("priority", 1),
-    )
-    tasks.append(task)
-    return task
+    global _next_id
+    with _lock:
+        task = Task(
+            id=_next_id,
+            title=data.title,
+            description=data.description,
+            status=data.status,
+            priority=data.priority,
+        )
+        _next_id += 1
+        tasks.append(task)
+        return task
 
 
 def update_task(task_id, data):
-    task = get_task(task_id)
-    if "title" in data:
-        task.title = data["title"]
-    if "description" in data:
-        task.description = data["description"]
-    if "status" in data:
-        task.status = data["status"]
-    if "priority" in data:
-        task.priority = data["priority"]
-    return task
+    with _lock:
+        for task in tasks:
+            if task.id == task_id:
+                for field, value in data.items():
+                    setattr(task, field, value)
+                return task
+    raise ValueError("not found")
 
 
 def delete_task(task_id):
-    for t in tasks:
-        if t.id == task_id:
-            tasks.remove(t)
-            return True
+    with _lock:
+        for task in tasks:
+            if task.id == task_id:
+                tasks.remove(task)
+                return True
     return False

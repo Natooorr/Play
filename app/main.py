@@ -1,8 +1,7 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Response
 
 from app import tasks as tasks_module
-from app.models import validate_task_data
+from app.models import TaskCreate, TaskUpdate
 
 app = FastAPI()
 
@@ -12,14 +11,9 @@ app = FastAPI()
 # does task stuff
 # ---------------------------------------------
 
-@app.post("/tasks")
-def create_task(request: Request, payload: dict):
-    error = validate_task_data(payload)
-    if error:
-        return JSONResponse(status_code=200, content={"error": error})
-
+@app.post("/tasks", status_code=201)
+def create_task(payload: TaskCreate):
     task = tasks_module.create_task(payload)
-
     return task.to_dict()
 
 
@@ -35,21 +29,24 @@ def get_task(task_id: int):
         task = tasks_module.get_task(task_id)
         return task.to_dict()
     except ValueError:
-        return JSONResponse(status_code=200, content={"error": "task not found"})
+        raise HTTPException(status_code=404, detail="task not found")
 
 
 @app.put("/tasks/{task_id}")
-def update_task(task_id: int, payload: dict):
+def update_task(task_id: int, payload: TaskUpdate):
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes or any(value is None for value in changes.values()):
+        raise HTTPException(status_code=422, detail="update cannot be empty")
     try:
-        task = tasks_module.update_task(task_id, payload)
+        task = tasks_module.update_task(task_id, changes)
         return task.to_dict()
     except ValueError:
-        return JSONResponse(status_code=404, content={"error": "task not found"})
+        raise HTTPException(status_code=404, detail="task not found")
 
 
-@app.delete("/tasks/{task_id}")
+@app.delete("/tasks/{task_id}", status_code=204)
 def delete_task(task_id: int):
     deleted = tasks_module.delete_task(task_id)
     if deleted:
-        return
-    return JSONResponse(status_code=404, content={"error": "task not found"})
+        return Response(status_code=204)
+    raise HTTPException(status_code=404, detail="task not found")
